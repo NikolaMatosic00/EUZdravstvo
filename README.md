@@ -1,0 +1,1 @@
+Projekat koji simulira elektronsku upravu.
