@@ -1,0 +1,52 @@
+version: "3.1"
+
+networks:
+  tiseu:
+    name: tiseu
+
+services:
+
+  rfzo-frontend:
+    build:
+      context: ./frontend
+    container_name: rfzo-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "10001:10001"
+
+  rfzo-backend:
+    build:
+      context: ./backend/
+    container_name: rfzo-backend
+    ports:
+      - "10002:10002"
+    networks:
+      tiseu:
+        aliases:
+          - "rfzo-backend"
+    depends_on:
+      - rfzo-mysql
+
+  rfzo-mysql:
+    image: mysql:8.0.23
+    container_name: rfzo-mysql
+    ports:
+      - "10003:10003"
+    environment:
+      - MYSQL_TCP_PORT=9003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - rfzo-mysql-data:/var/lib/mysql
+      - ./database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "rfzo-mysql"
+
+volumes:
+  rfzo-mysql-data:
+    driver: local
