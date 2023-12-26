@@ -1,0 +1,290 @@
+version: "3.1"
+
+networks:
+  tiseu:
+    name: tiseu
+
+x-auth-base-service: &auth-base-service
+  build:
+    context: ./auth-server/
+    dockerfile: Dockerfile.prod
+  working_dir: /usr/src/app
+  environment:
+    - NODE_ENV=docker-development
+    - DB_NAME=auth-server
+    - DB_URI=mongodb://auth-mongo:27017
+    - JWT_SECRET=secret
+    - JWT_DURATION=120m
+
+x-auth-direct-run-service: &auth-direct-run-service
+  <<: *auth-base-service
+  profiles: ["direct-run"]
+  build:
+    context: ./auth-server/
+    dockerfile: Dockerfile.dev
+
+services:
+  # --- AUTH SERVER ---
+  auth-app:
+    <<: *auth-base-service
+    command: node dist/main.js
+    container_name: auth-app
+    networks:
+      tiseu:
+        aliases:
+          - auth-app
+    ports:
+      - "4101:3101"
+      - "5101:3101"
+
+  auth-mongo:
+    image: mongo
+    container_name: auth-mongo
+    ports:
+      - "4117:27017"
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongo localhost:27017/db --quiet
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - auth-mongodb:/data/db
+    networks:
+      tiseu:
+        aliases:
+          - auth-mongo
+
+  auth-seed-admin:
+    <<: *auth-direct-run-service
+    entrypoint: npx nestjs-command seed:admin
+    networks:
+      tiseu:
+        aliases:
+          - auth-command-seed-admin
+  auth-seed-user:
+    <<: *auth-direct-run-service
+    entrypoint: npx nestjs-command seed:user
+    networks:
+      tiseu:
+        aliases:
+          - auth-command-seed-user
+
+  
+
+
+  # --- ePortal ---
+  eportal:
+    environment:
+      - VITE_PORT=4011
+      - VITE_APP_URL=http://localhost:4011
+      - VITE_AUTH_SERVER_URL=http://localhost:4101
+    build:
+      context: ./eportal/
+    container_name: eportal
+    networks:
+      tiseu:
+        aliases:
+          - eportal
+    ports:
+      - "4011:4011"
+
+  # --- Transplatacija i transfuzija ---
+  transplatacija-transfuzija-backend:
+    build:
+      context: ./transplatacija-transfuzija/backend/
+    container_name: transplatacija-transfuzija-backend
+    ports:
+      - "8002:8002"
+    networks:
+      tiseu:
+        aliases:
+          - "transplatacija-transfuzija-backend"
+    depends_on:
+      - transplatacija-transfuzija-mysql
+
+  transplatacija-transfuzija-mysql:
+    image: mysql:8.0.23
+    container_name: transplatacija-transfuzija-mysql
+    ports:
+      - "8003:8003"
+    environment:
+      - MYSQL_TCP_PORT=8003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - transplatacija-transfuzija-mysql-data:/var/lib/mysql
+      - ./transplatacija-transfuzija/database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "transplatacija-transfuzija-mysql"
+  
+
+  # --- ZDRAVSTVO ---
+  zdravstvo-frontend:
+    environment:
+      - PORT=9001
+    build:
+      context: ./zdravstvo/frontend
+    container_name: zdravstvo-frontend
+    volumes:
+      - ./zdravstvo/frontend:/app
+      - /app/node_modules
+    ports:
+      - "9001:9001"
+
+  zdravstvo-backend:
+    build:
+      context: ./zdravstvo/backend/
+    container_name: zdravstvo-backend
+    ports:
+      - "9002:9002"
+    networks:
+      tiseu:
+        aliases:
+          - "zdravstvo-backend"
+    depends_on:
+      - zdravstvo-mysql
+
+  zdravstvo-mysql:
+    image: mysql:8.0.23
+    container_name: zdravstvo-mysql
+    ports:
+      - "9003:9003"
+    environment:
+      - MYSQL_TCP_PORT=9003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - zdravstvo-mysql-data:/var/lib/mysql
+      - ./zdravstvo/database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "zdravstvo-mysql"
+
+
+  # --- apr ---
+  apr-backend:
+    build:
+      context: ./apr/backend/
+    container_name: apr-backend
+    ports:
+      - "11002:11002"
+    networks:
+      tiseu:
+        aliases:
+          - "apr-backend"
+    depends_on:
+      - apr-mysql
+
+  apr-mysql:
+    image: mysql:8.0.23
+    container_name: apr-mysql
+    ports:
+      - "11003:11003"
+    environment:
+      - MYSQL_TCP_PORT=11003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - apr-mysql-data:/var/lib/mysql
+      - ./apr/database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "apr-mysql"
+
+  # --- croso ---
+  croso-backend:
+    build:
+      context: ./croso/backend/
+    container_name: croso-backend
+    ports:
+      - "12002:12002"
+    networks:
+      tiseu:
+        aliases:
+          - "croso-backend"
+    depends_on:
+      - croso-mysql
+
+  croso-mysql:
+    image: mysql:8.0.23
+    container_name: croso-mysql
+    ports:
+      - "12003:12003"
+    environment:
+      - MYSQL_TCP_PORT=12003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - croso-mysql-data:/var/lib/mysql
+      - ./croso/database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "croso-mysql"
+
+  # --- RFZO ---
+  rfzo-frontend:
+    environment:
+      - PORT=10001
+    build:
+      context: ./rfzo/frontend
+    container_name: rfzo-frontend
+    volumes:
+      - ./rfzo/frontend:/app
+      - /app/node_modules
+    ports:
+      - "10001:10001"
+
+  rfzo-backend:
+    build:
+      context: ./rfzo/backend/
+    container_name: rfzo-backend
+    ports:
+      - "10002:10002"
+    networks:
+      tiseu:
+        aliases:
+          - "rfzo-backend"
+    depends_on:
+      - rfzo-mysql
+
+  rfzo-mysql:
+    image: mysql:8.0.23
+    container_name: rfzo-mysql
+    ports:
+      - "10003:10003"
+    environment:
+      - MYSQL_TCP_PORT=10003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - rfzo-mysql-data:/var/lib/mysql
+      - ./rfzo/database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "rfzo-mysql"
+
+volumes:
+  auth-mongodb:
+    driver: local
+  zdravstvo-mysql-data:
+    driver: local
+  transplatacija-transfuzija-mysql-data:
+    driver: local
+  apr-mysql-data:
+    driver: local
+  croso-mysql-data:
+    driver: local
+  rfzo-mysql-data:
+    driver: local
