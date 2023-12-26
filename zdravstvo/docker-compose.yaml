@@ -1,0 +1,52 @@
+version: "3.1"
+
+networks:
+  tiseu:
+    name: tiseu
+
+services:
+
+  zdravstvo-frontend:
+    build:
+      context: ./frontend
+    container_name: zdravstvo-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "9001:9001"
+
+  zdravstvo-backend:
+    build:
+      context: ./backend/
+    container_name: zdravstvo-backend
+    ports:
+      - "9002:9002"
+    networks:
+      tiseu:
+        aliases:
+          - "zdravstvo-backend"
+    depends_on:
+      - zdravstvo-mysql
+
+  zdravstvo-mysql:
+    image: mysql:8.0.23
+    container_name: zdravstvo-mysql
+    ports:
+      - "9003:9003"
+    environment:
+      - MYSQL_TCP_PORT=9003
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=root
+    volumes:
+      - zdravstvo-mysql-data:/var/lib/mysql
+      - ./database:/tmp/database
+    command: mysqld --init-file="/tmp/database/init_db.sql"
+    networks:
+      tiseu:
+        aliases:
+          - "zdravstvo-mysql"
+
+volumes:
+  zdravstvo-mysql-data:
+    driver: local
